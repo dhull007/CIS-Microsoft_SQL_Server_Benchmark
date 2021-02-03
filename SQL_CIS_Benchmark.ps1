@@ -1,34 +1,36 @@
-﻿######################################################
+######################################################
 #                                                    #
 #  CIS Microsoft SQL Server 2014 Benchmark (v1.2.0)  #
 #                                                    #
 #                Written by Ian Guile                #
 #                                                    #
 ######################################################
+#02022021 - PD - Got this script working on SQl 2019 version; it should be used as an algorithem templete instead of fix all code. 
+#Its just technical refactoring to get it execute without errors.
 
 $Fix_Allowed = 0
 
  
 # 2.01 - 2.08 & 5.2
 function S-Name_Conf_InUse.F-SysConf ($name, $fix = $name, $PreQ = "", $Value = 0) {
-    $QueryResults = @(Invoke-Sqlcmd -Query "$PreQ SELECT name,
-        CAST(value as int) as configured, CAST(value_in_use as int) as in_use FROM sys.configurations
+
+    $QueryResults = @(Invoke-Sqlcmd -Query "$PreQ SELECT name, CAST(value as int) as configured, CAST(value_in_use as int) as in_use FROM sys.configurations
         WHERE name = $name;")
     if ($QueryResults.configured -ne $Value -or $QueryResults.in_use -ne $Value) {
-        Write-Output("$name enabled. +0")
+        Write-host("$name enabled. +0")
         if ($Fix_Allowed -eq 1) {
             $Query = "EXECUTE sp_configure $fix, $Value;`nRECONFIGURE;"
             $UserInput = Read-Host("`tDisable by running the following? [Y/n]`n$Query`n")
             if ($UserInput -Notmatch "n") {
                 Invoke-Sqlcmd -Query $Query
-                Write-Output("$name disabled. +1")
+                Write-Host("$name disabled. +1")
                 return 1
             }
         }
         return 0
     }
     else {
-        Write-Output("$($name) disabled. +1")
+        Write-Host("$($name) disabled. +1")
         return 1
     }
 }
@@ -39,7 +41,7 @@ function RemoteAdminConnection () {
         AND name != 'msdb' AND state = 0;"
     $QueryResults = @(Invoke-Sqlcmd -Query $Q1)
     if ($QueryResults.name) {
-        Write-Output("Trustworthy databases found +0")
+        Write-Host("Trustworthy databases found +0")
         if ($Fix_Allowed -eq 1) {
             $Query = "ALTER DATABASE <database> SET TRUSTWORTHY OFF;"
             $UserInput = Read-Host("The following trustworthy databases were found.`n$($QueryResults.name)`n
@@ -48,7 +50,7 @@ function RemoteAdminConnection () {
                 foreach ($db in $QueryResults.name) {
                     Invoke-Sqlcmd -Query $Query.Replace("<database>", $db)
                 }
-                Write-Output("All databases untrusted +1")
+                Write-Host("All databases untrusted +1")
                 return 1
             }
             else {
@@ -63,14 +65,14 @@ function RemoteAdminConnection () {
                 }
                 $QueryResults = @(Invoke-Sqlcmd -Query $Q1)
                 if ($QueryResults.name) { return 0 }
-                Write-Output("All databases untrusted +1")
+                Write-Host("All databases untrusted +1")
                 return 1
             }
         }
         return 0
     }
     else {
-        Write-Output("No trustworthy databases found +1")
+        Write-Host("No trustworthy databases found +1")
         return 1
     }
 }
@@ -85,7 +87,7 @@ function HideInstance {
             @value = @getValue OUTPUT;
         SELECT @getValue;")
     if ($QueryResults -eq 1) {
-        Write-Output("Instances not hidden +0")
+        Write-Host("Instances not hidden +0")
         if ($Fix_Allowed -eq 1) {
             $Query = "EXEC master..xp instance regwrite`n`t@rootkey = N'HKEY LOCAL MACHINE',
     @key = N'SOFTWARE\Microsoft\Microsoft SQL Server\MSSQLServer\SuperSocketNetLib',
@@ -93,14 +95,14 @@ function HideInstance {
             $UserInput = Read-Host("Hide instance by running the following? [Y/n]`n$($Query)`n")
             if ($UserInput -Notmatch "n") {
                 Invoke-Sqlcmd -Query $Query
-                Write-Output("Instances hidden +1")
+                Write-Host("Instances hidden +1")
                 return 1
             }
         }
         return 0
     }
     else {
-        Write-Output("Instances hidden +1")
+        Write-Host("Instances hidden +1")
         return 1
     }
 }
@@ -112,36 +114,36 @@ function saDisabled_Renamed {
         FROM sys.server_principals
         WHERE sid = 0x1;")
     if ($QueryResults.is_disabled -eq 0) {
-        Write-Output("'sa' login enabled +0")
+        Write-Host("'sa' login enabled +0")
         if ($Fix_Allowed -eq 1) {
             $Query = "ALTER LOGIN $($QueryResults.name) DISABLE;"
             $UserInput = Read-Host("Disabled 'sa' login by running the following? [Y/n]`n$($Query)`n")
             if ($UserInput -Notmatch "n") {
                 Invoke-Sqlcmd -Query $Query
-                Write-Output("'sa' login disabled +1")
+                Write-Host("'sa' login disabled +1")
                 $saScore[0] = 1
             }
         }
     }
     else {
-        Write-Output("'sa' login disabled +1")
+        Write-Host("'sa' login disabled +1")
         $saScore[0] = 1
     }
     if ($QueryResults.name -eq "sa") {
-        Write-Output("'sa' account not renamed +0")
+        Write-Host("'sa' account not renamed +0")
         if ($Fix_Allowed -eq 1) {
             $Query = "ALTER LOGIN $($QueryResults.name) WITH NAME = <chosen name>;"
             $UserInput = Read-Host("Change 'sa' account name by running the following? [Y/n]`n$($Query)`n")
             if ($UserInput -Notmatch "n") {
                 $UserInput = Read-Host("What new name should be used for the account?")
                 Invoke-Sqlcmd -Query "ALTER LOGIN $($QueryResults.name) WITH NAME = $($UserInput);"
-                Write-Output("'sa' account renamed +1")
+                Write-Host("'sa' account renamed +1")
                 $saScore[1] = 1
             }
         }
     }
     else {
-        Write-Output("'sa' account renamed +1")
+        Write-Host("'sa' account renamed +1")
         $saScore[1] = 1
     }
     return $saScore
@@ -152,20 +154,20 @@ function xp_cmdshell {
     $QueryResults = @(Invoke-Sqlcmd -Query "RECONFIGURE WITH OVERRIDE;
         EXECUTE sp_configure 'xp_cmdshell';")
     if ($QueryResults.config_value -ne 0 -or $QueryResults.run_value -ne 0) {
-        Write-Output("xp_cmdshell enabled +0")
+        Write-Host("xp_cmdshell enabled +0")
         if ($Fix_Allowed -eq 1) {
             $Query = "EXECUTE sp_configure 'xp_cmdshell', 0;`nRECONFIGURE;"
             $UserInput = Read-Host("disable xp_cmdshell by running the following? [Y/n]`n$($Query)`n")
             if ($UserInput -Notmatch "n") {
                 Invoke-Sqlcmd -Query $Query
-                Write-Output("xp_cmdshell disabled +1")
+                Write-Host("xp_cmdshell disabled +1")
                 return 1
             }
         }
         return 0
     }
     else {
-        Write-Output("xp_cmdshell disabled +1")
+        Write-Host("xp_cmdshell disabled +1")
         return 1
     }
 }
@@ -177,7 +179,7 @@ function Contained_AutoClose {
     $R1 = "no contained databases with 'AUTO_CLOSE' found +1"
     $QueryResults = @(Invoke-Sqlcmd $Q1)
     if ($QueryResults.name) {
-        Write-Output(($R1.Replace("0","1")).Replace("no ", ""))
+        Write-Host(($R1.Replace("0","1")).Replace("no ", ""))
         if ($Fix_Allowed -eq 1) {
             $Query = "ALTER DATABASE <database> SET AUTO_CLOSE OFF;"
             $UserInput = Read-Host("The following contained databases with 'AUTO_CLOSE' were found.`n$($QueryResults.name)`n
@@ -186,7 +188,7 @@ function Contained_AutoClose {
                 foreach ($db in $QueryResults.name) {
                     Invoke-Sqlcmd -Query $Query.Replace("<database>", $db)
                 }
-                Write-Output($R1.Replace("found ", ""))
+                Write-Host($R1.Replace("found ", ""))
                 return 1
             }
             else { 
@@ -201,14 +203,14 @@ function Contained_AutoClose {
                 }
                 $QueryResults = @(Invoke-Sqlcmd $Q1)
                 if ($QueryResults.name) { return 0 }
-                Write-Output($R1.Replace("found ", ""))
+                Write-Host($R1.Replace("found ", ""))
                 return 1
             }
         }
         return 0
     }
     else {
-        Write-Output($R1)
+        Write-Host($R1)
         return 1
     }
 }
@@ -220,21 +222,21 @@ function NosaAccount{
         WHERE name = 'sa'
         AND sid <> 0x01;")
     if ($QueryResults.name) {
-        Write-Output("'sa' account name found +0")
+        Write-Host("'sa' account name found +0")
         if ($Fix_Allowed -eq 1) {
             $Query = "ALTER LOGIN sa WITH NAME = <chosen name>;"
             $UserInput = Read-Host("Change 'sa' account name by running the following? [Y/n]`n$($Query)`n")
             if ($UserInput -Notmatch "n") {
                 $UserInput = Read-Host("What new name should be used for the account?")
                 Invoke-Sqlcmd -Query "ALTER LOGIN sa WITH NAME = $($UserInput);"
-                Write-Output("account renamed, no user with name 'sa' +1")
+                Write-Host("account renamed, no user with name 'sa' +1")
                 return 1
             }
         }
         return 0
     }
     else {
-        Write-Output("no user with name 'sa' +1")
+        Write-Host("no user with name 'sa' +1")
         return 1
     }
 }
@@ -243,9 +245,9 @@ function NosaAccount{
 function ServerAuthentication {
     $QueryResults = @(Invoke-Sqlcmd -Query "SELECT SERVERPROPERTY('IsIntegratedSecurityOnly') AS value;")
     if ($QueryResults.value -ne 1) {
-        Write-Output("Multiple Authentication Methods used +0")
+        Write-Host("Multiple Authentication Methods used +0")
         if ($Fix_Allowed -eq 1) {
-            Write-Output("Follow the following steps:
+            Write-Host("Follow the following steps:
     1. Open the SQL Server Management Studio
     2. Open the Object Explorer tab and connect to the target database instance
     3. Right click the instance name and select 'Properties'
@@ -255,7 +257,7 @@ function ServerAuthentication {
         return 0
     }
     else {
-        Write-Output("Windows Authentication used +1")
+        Write-Host("Windows Authentication used +1")
         return 1
     }
 }
@@ -264,18 +266,19 @@ function ServerAuthentication {
 function GuestConnect {
     $DBList = @(Invoke-Sqlcmd -Query "SELECT name FROM master.dbo.sysdatabases
         WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb')")
-    $Q1 = "USE <database>; GO`nSELECT DB NAME() AS DBName, dpr.name, dpe.permission name
+    $Q1 = "USE <database>; `nGO`nSELECT DB_NAME() AS DBName, dpr.name, dpe.permission_name
             FROM sys.database_permissions dpe JOIN sys.database_principals dpr
             ON dpe.grantee_principal_id=dpr.principal_id
             WHERE dpr.name='guest' AND dpe.permission_name='CONNECT'"
     $R1 = "no databases found where 'guest' user has CONNECT ability +1"
     foreach ($db in $DBList) {
-        if (-Not (Invoke-Sqlcmd -Query $Q1.Replace("<database", $db)).DBName) {
-            $DBList = $DBList | Where-Object {$_ -ne $db}
+    write-host $Q1.Replace("<database>", $db.name)
+        if (-Not (Invoke-Sqlcmd -Query $Q1.Replace("<database>", $db.name)).DBName) {
+            $DBList = $DBList | Where-Object {$_ -ne $db.name}
         }
     }
     if ($DBList.Length > 0) {
-        Write-Output(($R1.Replace("no ", "")).Replace("1", "0"))
+        Write-Host(($R1.Replace("no ", "")).Replace("1", "0"))
         if ($Fix_Allowed -eq 1) {
         $Query = "USE <database>;`nGO`nREVOKE CONNECT FROM guest"
             $UserInput = Read-Host("disable 'guest' user connect permission on all databases by running the following? [Y/n]`n$Query`n")
@@ -283,7 +286,7 @@ function GuestConnect {
                 foreach($db in $DBList) {
                     Invoke-Sqlcmd -Query $Query.Replace("<database>", $db)
                 }
-                Write-Output($R1.Replace("found ", ""))
+                Write-Host($R1.Replace("found ", ""))
                 return 1
             }
             else {
@@ -302,7 +305,7 @@ function GuestConnect {
                         }
                     }
                     if ($DBList.Length > 0) {
-                        Write-Output($R1.Replace("found ", ""))
+                        Write-Host($R1.Replace("found ", ""))
                         return 1
                     }
                 }
@@ -311,7 +314,7 @@ function GuestConnect {
         return 0
     }
     else {
-        Write-Output($R1)
+        Write-Host($R1)
         return 1
     }
 }
@@ -322,7 +325,7 @@ function OrphanedUsers {
     $QueryResults = @(Invoke-Sqlcmd -Query $Q0)
     $R1 = "No orphaned users +1"
     if ($QueryResults) {
-        Write-Output("The following orphaned users found: +0`n$QueryResults")
+        Write-Host("The following orphaned users found: +0`n$QueryResults")
         if ($Fix_Allowed -eq 1) {
             $Q1 = "DROP USER <login>" #removing user
             $Q2 = "EXEC sp_change_users_login 'Update_One', <database_user>, <login>" #re-mapping user
@@ -342,7 +345,7 @@ function OrphanedUsers {
                 }
                 $QueryResults = Invoke-Sqlcmd -Query $Q0
                 if (-not $QueryResults) {
-                    Write-Output($R1)
+                    Write-Host($R1)
                     return 1
                 }
             }
@@ -350,7 +353,7 @@ function OrphanedUsers {
         return 0
     }
     else {
-        Write-Output($R1)
+        Write-Host($R1)
         return 1
     }
 }
@@ -369,15 +372,15 @@ function Contained_Authentication {
         }
     }
     if ($DBDict.Count) {
-        Write-Output("The following contained databases and accounts use non-Windows authentication: +0")
+        Write-Host("The following contained databases and accounts use non-Windows authentication: +0")
         $DBDict.Keys | Select @{l = "Database"; e = {$_}}, @{l = "Account(s)"; e = {$DBDict.$_}}
         if ($Fix_Allowed -eq 1) {
-            Write-Output("Disable SQL authentication for the above user accounts on their respective databases to remediate.")
+            Write-Host("Disable SQL authentication for the above user accounts on their respective databases to remediate.")
         }
         return 0
     }
     else {
-        Write-Output("All contained databases using strictly windows authentication +1")
+        Write-Host("All contained databases using strictly windows authentication +1")
         return 1
     }
 }
@@ -398,7 +401,7 @@ function CheckExpiration {
     $R1 = "All users with Sysadmin role have CHECK_EXPIRATION +1"
     $QueryResults = @(Invoke-Sqlcmd -Query $Q1).name
     if ($QueryResults) {
-        Write-Output(($R1.Replace("All", "Not all")).Replace("1", "0"))
+        Write-Host(($R1.Replace("All", "Not all")).Replace("1", "0"))
         if ($Fix_Allowed -eq 1) {
             $Query = "ALTER LOGIN <login_name> WITH CHECK_EXPIRATION = ON;"
             $UserInput = Read-Host("set 'CHECK_EXPIRATION' for all sysadmin users by running the following? [Y/n]`n$($Query)`n")
@@ -406,7 +409,7 @@ function CheckExpiration {
                 foreach ($usr in $QueryResults) {
                     Invoke-Sqlcmd -Query $Query.Replace("<login_name>", $usr)
                 }
-                Write-Output($R1)
+                Write-Host($R1)
                 return 1
             }
             else {
@@ -419,7 +422,7 @@ function CheckExpiration {
                         }
                     }
                     if (-Not (Invoke-Sqlcmd -Query $Q1)) {
-                        Write-Output($R1)
+                        Write-Host($R1)
                         return 1
                     }
                 }
@@ -428,7 +431,7 @@ function CheckExpiration {
         return 0
     }
     else {
-        Write-Output($R1)
+        Write-Host($R1)
         return 1
     }
 }
@@ -444,8 +447,8 @@ function CheckPolicy {
     $QueryResults = @(Invoke-Sqlcmd -Query $Q0)
     if ($QueryResults) {
         if ($QueryResults.is_disabled.Contains(0)) {
-            Write-Output("'CHECK_POLICY' not enabled on the following SQL authenticated logins +0")
-            Write-Output($QueryResults)
+            Write-Host("'CHECK_POLICY' not enabled on the following SQL authenticated logins +0")
+            Write-Host($QueryResults)
             if ($Fix_Allowed -eq 1) {
                 $UserInput = Read-Host("by running the following? [Y/n]`n$($Query)`n")
                 if ($Fix_Allowed) { $fix = 0
@@ -468,7 +471,7 @@ function CheckPolicy {
         }
         $QueryResults = @(Invoke-Sqlcmd -Query $Q0.Replace("0", "0 AND is_disabled =1"))
         if ($QueryResults.is_disabled.Contains(1)) {
-            Write-Output("CHECK_POLICY not enabled on the following disabled SQL authenticated login(s)")
+            Write-Host("CHECK_POLICY not enabled on the following disabled SQL authenticated login(s)")
             if ($Fix_Allowed) { $fix = 0
                 $UserInput = Read-Host($R1.Replace("all", "all disabled"))
                 if ($UserInput -notmatch "n") { $fix = 1 }
@@ -487,12 +490,12 @@ function CheckPolicy {
         }
         $QueryResults = @(Invoke-Sqlcmd -Query $Q0)
         if ($QueryResults.is_disabled.Contains(0)) {
-            Write-Output($R0)
+            Write-Host($R0)
             return 1
         }
     }
     else {
-        Write-Output($R0)
+        Write-Host($R0)
         return 1
     }
 }
@@ -507,20 +510,20 @@ function MaxLogFiles {
         @NumErrorLogs OUTPUT;
         SELECT ISNULL(@NumErrorLogs, -1) AS [NumberOfLogFiles];")
     if ($QueryResults.config_value -ne 0 -or $QueryResults.run_value -ne 0) {
-        Write-Output("xp_cmdshell enabled +0")
+        Write-Host("xp_cmdshell enabled +0")
         if ($Fix_Allowed -eq 1) {
             $Query = "EXECUTE sp_configure 'xp_cmdshell', 0;`nRECONFIGURE;"
             $UserInput = Read-Host("disable xp_cmdshell by running the following? [Y/n]`n$($Query)`n")
             if ($UserInput -Notmatch "n") {
                 Invoke-Sqlcmd -Query $Query
-                Write-Output("xp_cmdshell disabled +1")
+                Write-Host("xp_cmdshell disabled +1")
                 return 1
             }
         }
         return 0
     }
     else {
-        Write-Output("xp_cmdshell disabled +1")
+        Write-Host("xp_cmdshell disabled +1")
         return 1
     }
 }
@@ -532,7 +535,7 @@ function CLRAssemblyPermission {
     $R1 = "all CLR assemblies set to 'SAFE ACCESS' +1"
     $QueryResults = @(Invoke-Sqlcmd -Query $Q1)
     if ($QueryResults.config_value -ne 0 -or $QueryResults.run_value -ne 0) {
-        Write-Output(($R1.Replace("all", "not all")).Replace("1", "0"))
+        Write-Host(($R1.Replace("all", "not all")).Replace("1", "0"))
         if ($Fix_Allowed -eq 1) {
             $Query = "ALTER ASSEMBLY <assembly> WITH PERMISSION_SET = SAFE"
             $UserInput = Read-Host("Set all assemblies to 'SAFE ACCESS' by running the following? [Y/n]`n$($Query)`n")
@@ -540,7 +543,7 @@ function CLRAssemblyPermission {
                 foreach ($asm in $QueryResults) {
                     Invoke-Sqlcmd -Query $Query.Replace("<assembly>", $asm)
                 }
-                Write-Output($R1)
+                Write-Host($R1)
                 return 1
             }
             else {
@@ -553,7 +556,7 @@ function CLRAssemblyPermission {
                         }
                     }
                     if (-Not (Invoke-Sqlcmd -Query $Q1)) {
-                        Write-Output($R1)
+                        Write-Host($R1)
                         return 1
                     }
                 }
@@ -562,7 +565,7 @@ function CLRAssemblyPermission {
         return 0
     }
     else {
-        Write-Output($R1)
+        Write-Host($R1)
         return 1
     }
 }
@@ -582,14 +585,14 @@ function SymmetricEncryptionAlgorithm {
         }
     }
     if ($DBList) {
-        Write-Output("The following databases use a symmetric key less secure than AES 128: +0`n$DBList")
+        Write-Host("The following databases use a symmetric key less secure than AES 128: +0`n$DBList")
         if ($Fix_Allowed -eq 1) { #TODO implement script for adding new key https://msdn.microsoft.com/en-us/library/ms189440.aspx
-            Write-Output("Use AES 128 or better symmetric algorithm.")
+            Write-Host("Use AES 128 or better symmetric algorithm.")
         }
         return 0
     }
     else {
-        Write-Output("Good symmetric key algorithm +1")
+        Write-Host("Good symmetric key algorithm +1")
         return 1
     }
 }
@@ -609,14 +612,14 @@ function AsymmetricKeySize {
         }
     }
     if ($DBList) {
-        Write-Output("The following databases use an asymmetric key with a size < 2048: +0`n$DBList")
+        Write-Host("The following databases use an asymmetric key with a size < 2048: +0`n$DBList")
         if ($Fix_Allowed -eq 1) { #TODO implement script for adding new key https://msdn.microsoft.com/en-us/library/ms187311.aspx
-            Write-Output("Use a key size greater than 2048.")
+            Write-Host("Use a key size greater than 2048.")
         }
         return 0
     }
     else {
-        Write-Output("Good asymmetric key size +1")
+        Write-Host("Good asymmetric key size +1")
         return 1
     }
 }
@@ -633,16 +636,16 @@ function main {
     #starting scoring
     Invoke-Sqlcmd -Query "EXECUTE sp_configure 'show advanced options', 1; RECONFIGURE;"
 
-    $Score += S-Name_Conf_InUse.F-SysConf "'ad hoc distributed queries'" "'Ad Hoc Distributed Queries'" + # 2.1
-              S-Name_Conf_InUse.F-SysConf "'clr enabled'" + # 2.2
-              S-Name_Conf_InUse.F-SysConf "'Cross db ownership chaining'" + # 2.3
-              S-Name_Conf_InUse.F-SysConf "'Database Mail XPs'" + # 2.4
-              S-Name_Conf_InUse.F-SysConf "'Ole Automation Procedures'" + # 2.5
-              S-Name_Conf_InUse.F-SysConf "'Remote access'" + # 2.6
-              S-Name_Conf_InUse.F-SysConf "'Scan for startup procs'" + # 2.8
-              RemoteAdminConnection # 2.9
+    $Score += (S-Name_Conf_InUse.F-SysConf "'ad hoc distributed queries'" ) + # 2.1
+              (S-Name_Conf_InUse.F-SysConf "'clr enabled'") + # 2.2
+              (S-Name_Conf_InUse.F-SysConf "'Cross db ownership chaining'") + # 2.3
+              (S-Name_Conf_InUse.F-SysConf "'Database Mail XPs'" )+ # 2.4
+              (S-Name_Conf_InUse.F-SysConf "'Ole Automation Procedures'" )+ # 2.5
+              (S-Name_Conf_InUse.F-SysConf "'Remote access'") + # 2.6
+              (S-Name_Conf_InUse.F-SysConf "'Scan for startup procs'")  # 2.8
+         $Score +=     RemoteAdminConnection # 2.9
               if ((Invoke-Sqlcmd "SELECT SERVERPROPERTY('IsClustered') AS is_clustered;").is_clustered -eq 0) { # if server is not clustered
-                $Score += S-Name_Conf_InUse.F-SysConf -Name "'Remote admin connections'" -PreQ "USE master; GO" # 2.7
+                $Score += S-Name_Conf_InUse.F-SysConf -Name "'Remote admin connections'" -PreQ "USE master; " # 2.7
                 if ($SQLVersion -eq 14) {$Score += HideInstance} # 2.12
               }
     $SaScore= saDisabled_Renamed # 2.13 - 2.14
@@ -665,7 +668,7 @@ function main {
 
     Invoke-Sqlcmd -Query "EXECUTE sp_configure 'show advanced options', 0; RECONFIGURE;"
     
-    Write-Output("Benchmark Score of $($Score) / 29")
+    Write-Host("Benchmark Score of $($Score) / 29")
 }
 
 main
